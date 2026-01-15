@@ -1,0 +1,5 @@
+selenium==4.15.2
+undetected-chromedriver==3.5.4
+twilio==8.10.0
+python-dateutil==2.8.2
+pytest==7.4.3
