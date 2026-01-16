@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from datetime import datetime, time as time_obj
+from datetime import datetime
 import time
 from .config.config_loader import ConfigLoader
 from .core.browser_manager import BrowserManager
@@ -26,23 +26,27 @@ class DVSABot:
         logger.info("=" * 100)
         
         config_loader = ConfigLoader()
-        self.preferences, self.twilio_config, self.browser_config = config_loader.load()
+        self.preferences, self.twilio_config, self.browser_config, self.notification_config, self.operating_hours = config_loader.load()
         
         self.browser_manager = BrowserManager(self.browser_config)
         self.state_machine = StateMachine()
-        self.notifier = TwilioNotifier(self.twilio_config)
+        
+        if self.twilio_config.enabled and self.notification_config.enable_sms:
+            self.notifier = TwilioNotifier(self.twilio_config, self.notification_config)
+        else:
+            self.notifier = None
+            logger.info("SMS notifications disabled")
         
         self.driver = None
-        self.max_attempts = 4
         
     def run(self):
-        if not self._is_operating_hours():
-            logger.info("Outside operating hours (6:05 AM - 11:35 PM)")
+        if not self.operating_hours.is_operating(datetime.now().time()):
+            logger.info(f"Outside operating hours ({self.operating_hours.start_time} - {self.operating_hours.end_time})")
             return
         
-        for attempt in range(self.max_attempts):
+        for attempt in range(self.browser_config.max_retries):
             logger.info("-" * 100)
-            logger.info(f"Attempt {attempt + 1}/{self.max_attempts}")
+            logger.info(f"Attempt {attempt + 1}/{self.browser_config.max_retries}")
             logger.info("-" * 100)
             
             try:
@@ -56,11 +60,14 @@ class DVSABot:
                 logger.error(f"Attempt {attempt + 1} failed: {e}", exc_info=True)
                 self.state_machine.transition_to(BotState.ERROR, str(e))
                 self._take_error_screenshot(attempt)
+                
+                if self.notifier and self.notification_config.notify_on_error:
+                    self.notifier.notify_error(str(e))
             
             finally:
-                if attempt < self.max_attempts - 1:
-                    logger.info("Waiting before next attempt...")
-                    time.sleep(60)
+                if attempt < self.browser_config.max_retries - 1:
+                    logger.info(f"Waiting {self.browser_config.retry_delay_seconds}s before next attempt...")
+                    time.sleep(self.browser_config.retry_delay_seconds)
         
         self._cleanup()
     
@@ -95,32 +102,30 @@ class DVSABot:
             self.preferences.before_date,
             self.preferences.after_date,
             self.preferences.disabled_dates,
-            self.preferences.formatted_current_test_date
+            self.preferences.formatted_current_test_date,
+            self.preferences.excluded_weekdays
         )
         
         if slot:
             self.state_machine.transition_to(BotState.TEST_FOUND, f"Found slot: {slot}")
-            self.notifier.notify_test_found(slot)
+            
+            if self.notifier and self.notification_config.notify_on_test_found:
+                self.notifier.notify_test_found(slot)
             
             if self.preferences.auto_book_test:
                 self.state_machine.transition_to(BotState.BOOKING, "Auto-booking enabled")
                 
                 if booking_handler.book_slot(slot, auto_confirm=True):
                     self.state_machine.transition_to(BotState.BOOKING_CONFIRMED, "Booking successful")
-                    self.notifier.notify_booking_success(slot)
+                    
+                    if self.notifier and self.notification_config.notify_on_booking_success:
+                        self.notifier.notify_booking_success(slot)
                 else:
                     raise Exception("Booking failed")
             else:
                 logger.info("Auto-booking disabled, manual action required")
         else:
             logger.info("No suitable slots found")
-    
-    def _is_operating_hours(self):
-        current_time = datetime.now().time()
-        start_time = time_obj(6, 5)
-        end_time = time_obj(23, 35)
-        
-        return start_time <= current_time <= end_time
     
     def _take_error_screenshot(self, attempt: int):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

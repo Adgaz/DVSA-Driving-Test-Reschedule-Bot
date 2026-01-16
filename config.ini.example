@@ -1,0 +1,30 @@
+[preferences]
+# Your current test details
+current_test_date = Monday 08 December 2021 10:44am
+current_test_centre = Watford driving test centre
+
+# Test centre preferences (comma-separated, partial names OK)
+preferred_centres = Letchworth, Cambridge, Watford
+
+# Date range overrides (optional, uses defaults if not set)
+# search_days_ahead = 60
+# search_days_after = 14
+
+# Specific dates to avoid (optional, format: YYYY-MM-DD)
+# disabled_dates = 2026-12-25, 2026-12-26, 2026-01-01
+
+# Weekdays to exclude (0=Monday, 6=Sunday, comma-separated)
+# excluded_weekdays = 5,6
+
+# Auto-booking (set to True to book automatically)
+auto_book_test = False
+
+[browser]
+# Uncomment and modify if you need different browser settings
+# driver_path = chromedriver/chromedriver_win.exe
+# headless = False
+# solve_manually = True
+
+[notifications]
+# Uncomment to disable notifications
+# enable_sms = False

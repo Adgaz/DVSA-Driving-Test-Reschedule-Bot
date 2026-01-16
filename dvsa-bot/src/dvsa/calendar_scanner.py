@@ -22,8 +22,11 @@ class CalendarScanner:
     def __init__(self, driver: WebDriver):
         self.driver = driver
         
-    def find_earliest_slot(self, before_date: date, after_date: date, disabled_dates: List[date], current_test_date: date):
-        logger.info(f"Scanning calendar: after={after_date}, before={before_date}")
+    def find_earliest_slot(self, before_date: date, after_date: date, disabled_dates: List[date], current_test_date: date, excluded_weekdays: List[int] = None):
+        if excluded_weekdays is None:
+            excluded_weekdays = [5, 6]
+        
+        logger.info(f"Scanning calendar: after={after_date}, before={before_date}, excluded_weekdays={excluded_weekdays}")
         
         try:
             calendar_body = self.driver.find_element(By.CLASS_NAME, "BookingCalendar-datesBody")
@@ -37,7 +40,7 @@ class CalendarScanner:
                 slot_date_str = day_link.get_attribute("data-date")
                 slot_date = datetime.strptime(slot_date_str, "%Y-%m-%d").date()
                 
-                if self._is_valid_slot(slot_date, before_date, after_date, disabled_dates, current_test_date):
+                if self._is_valid_slot(slot_date, before_date, after_date, disabled_dates, current_test_date, excluded_weekdays):
                     return self._extract_slot_details(day_link, slot_date)
             
             logger.info("No suitable slots found")
@@ -47,16 +50,21 @@ class CalendarScanner:
             logger.error(f"Error scanning calendar: {e}")
             raise
     
-    def _is_valid_slot(self, slot_date: date, before_date: date, after_date: date, disabled_dates: List[date], current_test_date: date):
+    def _is_valid_slot(self, slot_date: date, before_date: date, after_date: date, disabled_dates: List[date], current_test_date: date, excluded_weekdays: List[int]):
         if slot_date in disabled_dates:
+            logger.debug(f"Skipping {slot_date}: in disabled_dates")
             return False
         if slot_date >= current_test_date:
+            logger.debug(f"Skipping {slot_date}: not before current test date")
             return False
         if slot_date >= before_date:
+            logger.debug(f"Skipping {slot_date}: not before search limit")
             return False
         if slot_date <= after_date:
+            logger.debug(f"Skipping {slot_date}: not after search start")
             return False
-        if slot_date.weekday() >= 5:
+        if slot_date.weekday() in excluded_weekdays:
+            logger.debug(f"Skipping {slot_date}: weekday {slot_date.weekday()} excluded")
             return False
         return True
     
